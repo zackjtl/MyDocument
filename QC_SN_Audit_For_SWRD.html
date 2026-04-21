@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QCTool SN Duplication Check &amp; Self-Audit — SW RD 技術說明</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans TC"', 'sans-serif'],
+            mono: ['"Fira Code"', 'monospace'],
+          },
+          colors: {
+            deep: {
+              900: '#0a0e27',
+              800: '#0f1535',
+              700: '#162044',
+              600: '#1e2d5f',
+              500: '#27407a',
+            },
+            accent: {
+              blue: '#3b82f6',
+              cyan: '#06b6d4',
+              teal: '#14b8a6',
+              amber: '#f59e0b',
+              rose: '#f43f5e',
+            }
+          },
+          animation: {
+            'fade-in-up': 'fadeInUp 0.8s ease-out forwards',
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          },
+          keyframes: {
+            fadeInUp: {
+              '0%': { opacity: '0', transform: 'translateY(24px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Noto Sans TC', sans-serif; }
+    .glass {
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .glass-card {
+      background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      transition: all 0.3s ease;
+    }
+    .glass-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(255,255,255,0.15);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+    .glow-text {
+      text-shadow: 0 0 20px rgba(59,130,246,0.3);
+    }
+    .scroll-reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: all 0.8s ease-out;
+    }
+    .scroll-reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .code-pill {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.85em;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(6,182,212,0.15);
+      color: #22d3ee;
+      border: 1px solid rgba(6,182,212,0.25);
+    }
+    .code-block {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      background: rgba(10,14,39,0.7);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      overflow-x: auto;
+    }
+    .code-block .comment { color: #6b7280; }
+    .code-block .keyword { color: #c084fc; }
+    .code-block .type { color: #f472b6; }
+    .code-block .func { color: #60a5fa; }
+    .code-block .macro { color: #fbbf24; }
+    .code-block .num { color: #a78bfa; }
+    .code-block .str { color: #a3e635; }
+  </style>
+</head>
+<body class="bg-deep-900 text-gray-100 min-h-screen">
+
+  <!-- Nav -->
+  <nav class="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5">
+    <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+      <span class="text-sm font-semibold text-white">QCTool SN Audit</span>
+      <div class="flex items-center gap-2">
+        <a href="QC_SN_Audit_Explanation.html" class="px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition">PM / QA 版</a>
+        <span class="px-3 py-1.5 rounded-lg text-sm bg-accent-blue/20 text-accent-blue border border-accent-blue/20">SW RD 版</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <header class="relative overflow-hidden pt-14">
+    <div class="absolute inset-0 bg-gradient-to-br from-deep-900 via-deep-800 to-deep-600"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(59,130,246,0.15),_transparent_50%)]"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(6,182,212,0.1),_transparent_50%)]"></div>
+    
+    <div class="relative max-w-6xl mx-auto px-6 pt-16 pb-20">
+      <h1 class="text-4xl md:text-5xl font-black mb-4 leading-tight glow-text animate-fade-in-up">
+        SN Duplication Check<br>
+        <span class="bg-gradient-to-r from-accent-blue via-accent-cyan to-accent-teal bg-clip-text text-transparent">&amp; Self-Audit</span>
+      </h1>
+      <p class="text-lg text-gray-400 max-w-2xl leading-relaxed animate-fade-in-up">
+        面向 SW RD 的程式碼層級說明。涵蓋 SerialNumberChecker、SnRecordAudit 與 QualityControlTestThread 的關鍵段落與呼叫時序。
+      </p>
+    </div>
+  </header>
+
+  <!-- Overview -->
+  <section class="relative -mt-10 pb-12">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="glass-card rounded-2xl p-6 scroll-reveal">
+          <div class="text-accent-blue text-sm font-semibold mb-2">SerialNumberChecker</div>
+          <p class="text-sm text-gray-400">Bitmap 檔案鎖、跨機台互斥、check / mark 核心邏輯。</p>
+        </div>
+        <div class="glass-card rounded-2xl p-6 scroll-reveal">
+          <div class="text-accent-cyan text-sm font-semibold mb-2">SnRecordAudit</div>
+          <p class="text-sm text-gray-400">ENTER/EXIT log、Token 協調、AnalyzeLogFile 堆疊分析。</p>
+        </div>
+        <div class="glass-card rounded-2xl p-6 scroll-reveal">
+          <div class="text-accent-teal text-sm font-semibold mb-2">QualityControlTestThread</div>
+          <p class="text-sm text-gray-400">兩次 CheckAndRecord 呼叫時機、Error Code 對應。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section: SerialNumberChecker -->
+  <section class="py-12">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="flex items-center gap-4 mb-10 scroll-reveal">
+        <div class="w-1 h-10 bg-gradient-to-b from-accent-blue to-accent-cyan rounded-full"></div>
+        <div>
+          <span class="text-accent-blue text-sm font-semibold tracking-wider">SOURCE</span>
+          <h2 class="text-2xl font-bold">SerialNumberChecker.cpp</h2>
+        </div>
+      </div>
+
+      <!-- OpenBinExclusive -->
+      <div class="mb-10 scroll-reveal">
+        <div class="glass rounded-2xl p-6 md:p-8">
+          <h3 class="text-lg font-semibold text-accent-blue mb-2">OpenBinExclusive</h3>
+          <p class="text-sm text-gray-400 mb-4">
+            以 <span class="code-pill">GENERIC_READ | GENERIC_WRITE</span> 開啟 .bin，share mode 設為 <span class="code-pill">0</span>（不共享）。<br>
+            遇到 <span class="code-pill">ERROR_SHARING_VIOLATION</span> 或 <span class="code-pill">ERROR_LOCK_VIOLATION</span> 時重試最多 5 秒。
+          </p>
+          <div class="code-block p-4 md:p-5">
+<pre><span class="comment">// 每個 .bin 代表 65536 個 SN（65536 bit = 8192 byte）</span>
+<span class="type">const</span> DWORD <span class="macro">kSnBinBytes</span> = <span class="num">8192</span>;
+<span class="type">const</span> <span class="type">int</span> <span class="macro">kOpenRetryCount</span> = <span class="num">200</span>;
+<span class="type">const</span> DWORD <span class="macro">kOpenRetryMs</span> = <span class="num">25</span>;
+
+<span class="type">HANDLE</span> <span class="func">OpenBinExclusive</span>(<span class="type">const</span> string&amp; filename, <span class="type">bool</span> createIfMissing)
+{
+  <span class="keyword">for</span> (<span class="type">int</span> i = <span class="num">0</span>; i &lt; <span class="macro">kOpenRetryCount</span>; ++i) {
+    DWORD disp = createIfMissing ? OPEN_ALWAYS : OPEN_EXISTING;
+    <span class="type">HANDLE</span> h = <span class="func">CreateFileA</span>(filename.c_str(), GENERIC_READ | GENERIC_WRITE, <span class="num">0</span>, NULL,
+                             disp, FILE_ATTRIBUTE_NORMAL, NULL);
+    <span class="keyword">if</span> (h != INVALID_HANDLE_VALUE) <span class="keyword">return</span> h;
+    DWORD err = <span class="func">GetLastError</span>();
+    <span class="keyword">if</span> (err == ERROR_SHARING_VIOLATION || err == ERROR_LOCK_VIOLATION) {
+      <span class="func">Sleep</span>(<span class="macro">kOpenRetryMs</span>); <span class="keyword">continue</span>;
+    }
+    <span class="keyword">return</span> INVALID_HANDLE_VALUE;
+  }
+  <span class="keyword">return</span> INVALID_HANDLE_VALUE;
+}</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- DoAccessLocked -->
+      <div class="mb-10 scroll-reveal">
+        <div class="glass rounded-2xl p-6 md:p-8">
+          <h3 class="text-lg font-semibold text-accent-blue mb-2">DoAccessLocked</h3>
+          <p class="text-sm text-gray-400 mb-4">
+            在已持有 <span class="code-pill">LockFile</span> 的前提下執行。以 bit map 定位 SN，讀取 1 byte 後做位元運算判斷或標記。<br>
+            標記後立即 <span class="code-pill">FlushFileBuffers</span>，確保落盤才釋放鎖。
+          </p>
+          <div class="code-block p-4 md:p-5">
+<pre><span class="type">int</span> <span class="func">DoAccessLocked</span>(<span class="type">HANDLE</span> hFile, <span class="type">uint</span> SN, <span class="type">uint</span> offset, <span class="type">bool</span> checkDuplicate, <span class="type">bool</span> markUsed)
+{
+  DWORD byteIndex   = (<span class="type">DWORD</span>)((SN - offset) / <span class="num">8</span>);
+  DWORD bitPosition = (<span class="type">DWORD</span>)((SN - offset) % <span class="num">8</span>);
+  <span class="keyword">if</span> (byteIndex &gt;= <span class="macro">kSnBinBytes</span>) <span class="keyword">return</span> <span class="num">3</span>;
+
+  <span class="func">SetFilePointer</span>(hFile, byteIndex, NULL, FILE_BEGIN);
+  BYTE byte = <span class="num">0</span>;
+  DWORD dwRead = <span class="num">0</span>;
+  <span class="func">ReadFile</span>(hFile, &amp;byte, <span class="num">1</span>, &amp;dwRead, NULL);
+
+  <span class="keyword">if</span> (checkDuplicate &amp;&amp; (byte &amp; (BYTE)(<span class="num">1u</span> &lt;&lt; bitPosition)))
+    <span class="keyword">return</span> <span class="num">1</span>;   <span class="comment">// 重複</span>
+
+  <span class="keyword">if</span> (markUsed) {
+    byte |= (BYTE)(<span class="num">1u</span> &lt;&lt; bitPosition);
+    <span class="func">SetFilePointer</span>(hFile, byteIndex, NULL, FILE_BEGIN);
+    DWORD dwWritten = <span class="num">0</span>;
+    <span class="func">WriteFile</span>(hFile, &amp;byte, <span class="num">1</span>, &amp;dwWritten, NULL);
+    <span class="func">FlushFileBuffers</span>(hFile);
+  }
+  <span class="keyword">return</span> <span class="num">0</span>;
+}</pre>
+          </div>
+          <div class="mt-4 grid md:grid-cols-2 gap-4">
+            <div class="p-3 rounded-lg bg-deep-800/50 border border-white/5">
+              <div class="text-xs text-gray-500 mb-1">回傳值對照</div>
+              <div class="text-xs font-mono space-y-1">
+                <div><span class="code-pill">0</span> 成功</div>
+                <div><span class="code-pill">1</span> 重複 (duplicate)</div>
+                <div><span class="code-pill">2</span> 建立/寫入失敗</div>
+                <div><span class="code-pill">3</span> 位移錯誤</div>
+                <div><span class="code-pill">4</span> 讀取錯誤</div>
+                <div><span class="code-pill">5</span> 檔案鎖失敗</div>
+              </div>
+            </div>
+            <div class="p-3 rounded-lg bg-deep-800/50 border border-white/5">
+              <div class="text-xs text-gray-500 mb-1">Bitmap 位址計算</div>
+              <div class="text-xs font-mono text-gray-300">
+                byteIndex = (SN - offset) / 8<br>
+                bitPosition = (SN - offset) % 8<br>
+                <span class="text-gray-500"># offset = (SN / 65536) * 65536</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AccessSerialNumber -->
+      <div class="mb-10 scroll-reveal">
+        <div class="glass rounded-2xl p-6 md:p-8">
+          <h3 class="text-lg font-semibold text-accent-blue mb-2">AccessSerialNumber（核心入口）</h3>
+          <p class="text-sm text-gray-400 mb-4">
+            完整流程：開檔 → 初始化（若新建）→ <span class="code-pill">LockFile</span> → ENTER log → DoAccessLocked → EXIT log → Unlock → 關檔。<br>
+            audit log 寫在 LockFile 持有期間，確保 log 順序與實際互斥區間一致。
+          </p>
+          <div class="code-block p-4 md:p-5">
+<pre><span class="type">int</span> <span class="func">AccessSerialNumber</span>(<span class="type">uint</span> SN, <span class="type">bool</span> checkDuplicate, <span class="type">bool</span> markUsed,
+                         <span class="type">const</span> std::wstring* auditLotDirectory)
+{
+  <span class="type">bool</span> audit = auditLotDirectory != NULL &amp;&amp; !auditLotDirectory-&gt;empty() &amp;&amp;
+               (checkDuplicate || markUsed);
+
+  <span class="type">int</span> g = SN / <span class="num">65536</span>;
+  <span class="type">uint</span> offset = (<span class="type">uint</span>)g * <span class="num">65536u</span>;
+  string filename = _BaseDir + <span class="str">"\\"</span> + <span class="func">IntegerToString</span>(g) + <span class="str">".bin"</span>;
+
+  <span class="comment">// 純檢查且檔案不存在 =&gt; 視為未使用，直接成功</span>
+  <span class="keyword">if</span> (!markUsed &amp;&amp; checkDuplicate) {
+    <span class="keyword">if</span> (!<span class="func">FileExists</span>(<span class="func">ToWideString</span>(filename).c_str())) <span class="keyword">return</span> <span class="num">0</span>;
+  }
+
+  <span class="type">HANDLE</span> hFile = <span class="func">OpenBinExclusive</span>(filename, markUsed);
+  <span class="keyword">if</span> (hFile == INVALID_HANDLE_VALUE) <span class="keyword">return</span> <span class="num">2</span>;
+  <span class="keyword">if</span> (markUsed &amp;&amp; !<span class="func">EnsureBinInitialized</span>(hFile)) { <span class="func">CloseHandle</span>(hFile); <span class="keyword">return</span> <span class="num">2</span>; }
+  <span class="keyword">if</span> (!<span class="func">LockFile</span>(hFile, <span class="num">0</span>, <span class="num">0</span>, <span class="macro">kSnBinBytes</span>, <span class="num">0</span>)) { <span class="func">CloseHandle</span>(hFile); <span class="keyword">return</span> <span class="num">5</span>; }
+
+  <span class="keyword">if</span> (audit) <span class="func">SnRecordAuditLogEnter</span>(*auditLotDirectory, SN, checkDuplicate, markUsed);
+  <span class="type">int</span> ret = <span class="func">DoAccessLocked</span>(hFile, SN, offset, checkDuplicate, markUsed);
+  <span class="keyword">if</span> (audit) <span class="func">SnRecordAuditLogExit</span>(*auditLotDirectory, SN, checkDuplicate, markUsed, ret);
+
+  <span class="func">UnlockFile</span>(hFile, <span class="num">0</span>, <span class="num">0</span>, <span class="macro">kSnBinBytes</span>, <span class="num">0</span>);
+  <span class="func">CloseHandle</span>(hFile);
+  <span class="keyword">return</span> ret;
+}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section: SnRecordAudit -->
+  <section class="py-12 bg-gradient-to-b from-transparent via-deep-800/30 to-transparent">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="flex items-center gap-4 mb-10 scroll-reveal">
+        <div class="w-1 h-10 bg-gradient-to-b from-accent-cyan to-accent-teal rounded-full"></div>
+        <div>
+          <span class="text-accent-cyan text-sm font-semibold tracking-wider">SOURCE</span>
+          <h2 class="text-2xl font-bold">SnRecordAudit.cpp / .h</h2>
+        </div>
+      </div>
+
+      <!-- Log Enter/Exit -->
+      <div class="mb-10 scroll-reveal">
+        <div class="glass rounded-2xl p-6 md:p-8">
+          <h3 class="text-lg font-semibold text-accent-cyan mb-2">ENTER / EXIT Log 寫入</h3>
+          <p class="text-sm text-gray-400 mb-4">
+            透過 sidecar lock 檔（<span class="code-pill">.append.lock</span>）確保多機台共寫同一份 audit log 時不會出現破碎列。<br>
+            每列包含：timestamp | stationId | phase | bin | SN | check/record flag | tid | res。
+          </p>
+          <div class="code-block p-4 md:p-5">
+<pre><span class="type">void</span> <span class="func">SnRecordAuditLogEnter</span>(<span class="type">const</span> std::wstring&amp; lotDirectory, <span class="type">unsigned</span> sn,
+                           <span class="type">bool</span> checkDuplicate, <span class="type">bool</span> markUsed)
+{
+  <span class="func">EnsureStationId</span>();
+  <span class="type">wchar_t</span> body[<span class="num">256</span>];
+  <span class="func">swprintf</span>(body, <span class="num">256</span>, <span class="str">L"ENTER | bin=%u | SN=%u | check=%d record=%d | tid=%lu"</span>,
+           (<span class="type">unsigned</span>)(sn / <span class="num">65536u</span>), sn,
+           checkDuplicate ? <span class="num">1</span> : <span class="num">0</span>, markUsed ? <span class="num">1</span> : <span class="num">0</span>,
+           (<span class="type">unsigned</span> <span class="type">long</span>)<span class="func">GetCurrentThreadId</span>());
+  <span class="func">LogLine</span>(lotDirectory, body);
+}
+
+<span class="type">void</span> <span class="func">SnRecordAuditLogExit</span>(<span class="type">const</span> std::wstring&amp; lotDirectory, <span class="type">unsigned</span> sn,
+                          <span class="type">bool</span> checkDuplicate, <span class="type">bool</span> markUsed, <span class="type">int</span> resultCode)
+{
+  <span class="func">EnsureStationId</span>();
+  <span class="type">wchar_t</span> body[<span class="num">256</span>];
+  <span class="func">swprintf</span>(body, <span class="num">256</span>,
+           <span class="str">L"EXIT | bin=%u | SN=%u | check=%d record=%d | tid=%lu | res=%d"</span>,
+           (<span class="type">unsigned</span>)(sn / <span class="num">65536u</span>), sn,
+           checkDuplicate ? <span class="num">1</span> : <span class="num">0</span>, markUsed ? <span class="num">1</span> : <span class="num">0</span>,
+           (<span class="type">unsigned</span> <span class="type">long</span>)<span class="func">GetCurrentThreadId</span>(), resultCode);
+  <span class="func">LogLine</span>(lotDirectory, body);
+}</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- AnalyzeLogFile -->
+      <div class="mb-10 scroll-reveal">
+        <div class="glass rounded-2xl p-6 md:p-8">
+          <h3 class="text-lg font-semibold text-accent-cyan mb-2">AnalyzeLogFile 堆疊分析</h3>
+          <p class="text-sm text-gray-400 mb-4">
+            依 <span class="code-pill">bin</span> 分組後，每組使用「檔案原始順序」做堆疊判斷（不依賴 timestamp）。<br>
+            追蹤每個 SN 的 ENTER/EXIT 配對，若發現「未 EXIT 前又有不同 station 的 ENTER」，即為 suspicious overlap。
+          </p>
+          <div class="code-block p-4 md:p-5">
+<pre><span class="type">void</span> <span class="func">AnalyzeRowsForSingleBin</span>(<span class="type">const</span> std::vector&lt;AuditRow&gt;&amp; binRows,
+                             <span class="type">unsigned</span>&amp; crossOverlap, <span class="type">unsigned</span>&amp; orphanExit,
+                             <span class="type">unsigned</span>&amp; unmatchedEnter)
+{
+  std::map&lt;<span class="type">unsigned</span>, SnStack&gt; stacks;
+  <span class="keyword">for</span> (<span class="type">size_t</span> i = <span class="num">0</span>; i &lt; binRows.size(); ++i) {
+    <span class="type">const</span> AuditRow&amp; r = binRows[i];
+    SnStack&amp; st = stacks[r.sn];
+    <span class="keyword">if</span> (r.phase == <span class="str">"ENTER"</span>) {
+      <span class="keyword">if</span> (!st.empty() &amp;&amp; st.back().first != r.station)
+        ++crossOverlap;          <span class="comment">// 不同 station 重入 = 互斥可能失效</span>
+      st.push_back(std::make_pair(r.station, r.sn));
+    } <span class="keyword">else</span> <span class="keyword">if</span> (r.phase == <span class="str">"EXIT"</span>) {
+      <span class="keyword">if</span> (st.empty()) ++orphanExit;
+      <span class="keyword">else</span> <span class="keyword">if</span> (st.back().first != r.station) ++orphanExit;
+      <span class="keyword">else</span> st.pop_back();
+    }
+  }
+  unmatchedEnter = <span class="num">0</span>;
+  <span class="keyword">for</span> (<span class="keyword">auto</span>&amp; it : stacks) unmatchedEnter += (<span class="type">unsigned</span>)it.second.size();
+}</pre>
+          </div>
+          <div class="mt-4 p-3 rounded-lg bg-accent-amber/5 border border-accent-amber/20">
+            <p class="text-xs text-accent-amber">
+              <span class="font-semibold">重點：</span>分析時「不排序時間戳」。因為各機台時鐘可能不同步，檔案原始順序才是唯一可靠的順序依據。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Token Coordination -->
+      <div class="mb-10 scroll-reveal">
+        <div class="glass rounded-2xl p-6 md:p-8">
+          <h3 class="text-lg font-semibold text-accent-cyan mb-2">Token 協調與收尾</h3>
+          <p class="text-sm text-gray-400 mb-4">
+            開跑時透過 <span class="code-pill">session_create.lock</span> 協調清場；收工時由「最後一台」機器執行 finalize：<br>
+            拿 <span class="code-pill">finalize_audit.lock</span> → 掃描 tok_ring → 確認只剩自己 → 分析 log → 備份 → 刪除。
+          </p>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="code-block p-4">
+<pre><span class="comment">// 開跑：掛牌</span>
+<span class="func">SnStationResolveTokSessionDirectory</span>(snLotDir, snTokSessionDir);
+<span class="func">SnStationTokenPlace</span>(snTokSessionDir);
+
+<span class="comment">// 收工：撤牌 + 可能收尾</span>
+<span class="func">SnStationTokenRemoveAndMaybeFinalizeAudit</span>(
+    snTokSessionDir, snLotDir, snSum);</pre>
+            </div>
+            <div class="code-block p-4">
+<pre><span class="comment">// tok_ring 內的檔案</span>
+session_create.lock      <span class="comment">// 開跑協調鎖</span>
+round_cleanup.marker     <span class="comment">// 清場標記（20s fresh）</span>
+finalize_audit.lock      <span class="comment">// 收尾鎖</span>
+QC_station_&lt;id&gt;.tok      <span class="comment">// 本機 token</span>
+
+<span class="comment">// lot 根目錄</span>
+SN_record_audit.log
+SN_record_audit_history.log
+backup\SN_record_audit_*.log</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section: QualityControlTestThread -->
+  <section class="py-12">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="flex items-center gap-4 mb-10 scroll-reveal">
+        <div class="w-1 h-10 bg-gradient-to-b from-accent-teal to-accent-amber rounded-full"></div>
+        <div>
+          <span class="text-accent-teal text-sm font-semibold tracking-wider">SOURCE</span>
+          <h2 class="text-2xl font-bold">QualityControlTestThread.cpp</h2>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-8">
+        <div class="space-y-6 scroll-reveal">
+          <div class="glass rounded-2xl p-6">
+            <h3 class="text-lg font-semibold text-accent-teal mb-3">呼叫時序</h3>
+            <p class="text-sm text-gray-400 mb-4">
+              <span class="code-pill">Run()</span> 內先掛 Token，<span class="code-pill">MainProcedure()</span> 內執行兩次 <span class="code-pill">CheckAndRecordCardSerialNumber()</span>，最後撤牌並可能觸發 finalize。
+            </p>
+            <div class="code-block p-4">
+<pre><span class="comment">// Run()</span>
+<span class="keyword">if</span> (snSharedCoord) {
+  <span class="func">SnStationResolveTokSessionDirectory</span>(...);
+  <span class="func">SnStationTokenPlace</span>(snTokSessionDir);
+}
+<span class="keyword">try</span> {
+  MainProcedure();   <span class="comment">// 內含兩次 SN check</span>
+} <span class="keyword">catch</span> (...) {
+  <span class="func">SnStationTokenRemoveMyTokenOnly</span>(...);
+  <span class="keyword">throw</span>;
+}
+<span class="func">SnStationTokenRemoveAndMaybeFinalizeAudit</span>(...);
+
+<span class="comment">// MainProcedure()</span>
+<span class="func">CheckAndRecordCardSerialNumber</span>(Check=<span class="type">true</span>,  Record=<span class="type">false</span>); <span class="comment">// 第一次</span>
+<span class="comment">// ... 各項測試 ...</span>
+<span class="func">CheckAndRecordCardSerialNumber</span>(Check=<span class="type">true</span>,  Record=<span class="type">true</span>);  <span class="comment">// 第二次</span></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-6 scroll-reveal">
+          <div class="glass rounded-2xl p-6">
+            <h3 class="text-lg font-semibold text-accent-teal mb-3">Error Code 對應</h3>
+            <p class="text-sm text-gray-400 mb-4">
+              <span class="code-pill">HandleSNCheckResult()</span> 將 <span class="code-pill">AccessSerialNumber</span> 的回傳碼對應到 Error Type。
+            </p>
+            <div class="code-block p-4">
+<pre><span class="keyword">if</span> (Result == <span class="num">1</span>)
+  <span class="keyword">throw</span> <span class="func">CError</span>(ERROR_QC_REPEAT, L<span class="str">"[SN Check Error] : Card Serial Number Duplicated!"</span>);
+<span class="keyword">else</span> <span class="keyword">if</span> (Result == <span class="num">2</span>)
+  <span class="keyword">throw</span> <span class="func">CError</span>(ERROR_SN_FILE, L<span class="str">"[SN Check Error] : Create SN Temp File Error"</span>);
+<span class="keyword">else</span> <span class="keyword">if</span> (Result == <span class="num">3</span>)
+  <span class="keyword">throw</span> <span class="func">CError</span>(ERROR_SN_FILE, L<span class="str">"[SN Check Error] : Set SN Temp File Point Error"</span>);
+<span class="keyword">else</span> <span class="keyword">if</span> (Result == <span class="num">4</span>)
+  <span class="keyword">throw</span> <span class="func">CError</span>(ERROR_SN_FILE, L<span class="str">"[SN Check Error] : Read File Point Error"</span>);
+<span class="keyword">else</span> <span class="keyword">if</span> (Result == <span class="num">5</span>)
+  <span class="keyword">throw</span> <span class="func">CError</span>(ERROR_SN_FILE, L<span class="str">"[SN Check Error] : Waiting For File Lock Timeout"</span>);</pre>
+            </div>
+            <div class="mt-4 p-3 rounded-lg bg-deep-800/50 border border-white/5">
+              <p class="text-xs text-gray-400">
+                <span class="code-pill">ERROR_QC_REPEAT</span> 定義在 <span class="code-pill">ERROR_QC_TEST2 &lt;&lt; 24</span> 區段；<br>
+                <span class="code-pill">ERROR_SN_FILE</span> 同屬該區段，便於上層統一識別為「序號相關錯誤」。
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12 border-t border-white/5">
+    <div class="max-w-6xl mx-auto px-6 text-center">
+      <p class="text-gray-500 text-sm">
+        SN Duplication Check與Self-Audit技術說明（SW RD版）<br>
+        <span class="text-gray-600">基於 SourceCode/QCTool/CardTest/SerialNumberChecker.cpp 與 SnRecordAudit.cpp 原始碼分析製作</span>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>

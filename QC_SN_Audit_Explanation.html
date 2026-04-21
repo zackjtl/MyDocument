@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QCTool 序號重複檢測與自我驗證機制</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans TC"', 'sans-serif'],
+          },
+          colors: {
+            deep: {
+              900: '#0a0e27',
+              800: '#0f1535',
+              700: '#162044',
+              600: '#1e2d5f',
+              500: '#27407a',
+            },
+            accent: {
+              blue: '#3b82f6',
+              cyan: '#06b6d4',
+              teal: '#14b8a6',
+              amber: '#f59e0b',
+              rose: '#f43f5e',
+            }
+          },
+          animation: {
+            'fade-in-up': 'fadeInUp 0.8s ease-out forwards',
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          },
+          keyframes: {
+            fadeInUp: {
+              '0%': { opacity: '0', transform: 'translateY(24px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Noto Sans TC', sans-serif; }
+    .glass {
+      background: rgba(255,255,255,0.03);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .glass-card {
+      background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      transition: all 0.3s ease;
+    }
+    .glass-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(255,255,255,0.15);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+    .glow-text {
+      text-shadow: 0 0 20px rgba(59,130,246,0.3);
+    }
+    .timeline-line {
+      background: linear-gradient(to bottom, #3b82f6, #06b6d4, #14b8a6);
+    }
+    .scroll-reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: all 0.8s ease-out;
+    }
+    .scroll-reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .code-pill {
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(6,182,212,0.15);
+      color: #22d3ee;
+      border: 1px solid rgba(6,182,212,0.25);
+    }
+  </style>
+</head>
+<body class="bg-deep-900 text-gray-100 min-h-screen">
+
+  <!-- Nav -->
+  <nav class="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5">
+    <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+      <span class="text-sm font-semibold text-white">QCTool SN Audit</span>
+      <div class="flex items-center gap-2">
+        <span class="px-3 py-1.5 rounded-lg text-sm bg-accent-blue/20 text-accent-blue border border-accent-blue/20">PM / QA 版</span>
+        <a href="QC_SN_Audit_For_SWRD.html" class="px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition">SW RD 版</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <header class="relative overflow-hidden pt-14">
+    <div class="absolute inset-0 bg-gradient-to-br from-deep-900 via-deep-800 to-deep-600"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(59,130,246,0.15),_transparent_50%)]"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(6,182,212,0.1),_transparent_50%)]"></div>
+    
+    <div class="relative max-w-6xl mx-auto px-6 pt-20 pb-24">
+      <h1 class="text-4xl md:text-6xl font-black mb-6 leading-tight glow-text animate-fade-in-up">
+        序號重複檢測<br>
+        <span class="bg-gradient-to-r from-accent-blue via-accent-cyan to-accent-teal bg-clip-text text-transparent">與自我驗證機制</span>
+      </h1>
+      <p class="text-lg md:text-xl text-gray-400 max-w-2xl leading-relaxed animate-fade-in-up">
+        跨部門說明文件。了解 QCTool 如何確保每張卡片序號唯一性，
+        以及當「主防線」萬一失效時，系統如何留下證據供事後追查。
+      </p>
+    </div>
+  </header>
+
+  <!-- Overview Cards -->
+  <section class="relative -mt-12 pb-16">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="glass-card rounded-2xl p-8 scroll-reveal">
+          <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-accent-blue to-blue-700 flex items-center justify-center mb-6 text-2xl">
+            🔒
+          </div>
+          <h3 class="text-xl font-bold mb-3 text-white">序號重複檢測</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">
+            透過 Bitmap 檔案與系統檔案鎖，在多台機台共用資料夾時，確保同一序號不會被重複測試或出貨。
+          </p>
+          <div class="mt-4 flex gap-2">
+            <span class="code-pill">.bin</span>
+            <span class="code-pill">LockFile</span>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-8 scroll-reveal">
+          <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-accent-cyan to-cyan-700 flex items-center justify-center mb-6 text-2xl">
+            📋
+          </div>
+          <h3 class="text-xl font-bold mb-3 text-white">SN Self-Audit</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">
+            獨立於主流程的稽核機制。記錄每台機器「進入」與「離開」序號操作的時間點，
+            最後一台機器收工時自動分析並產出報告。
+          </p>
+          <div class="mt-4 flex gap-2">
+            <span class="code-pill">ENTER/EXIT</span>
+            <span class="code-pill">Token</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Core Concept Banner -->
+  <section class="py-12">
+    <div class="max-w-4xl mx-auto px-6">
+      <div class="glass rounded-2xl p-8 md:p-12 text-center scroll-reveal">
+        <h2 class="text-2xl md:text-3xl font-bold mb-4">核心設計理念</h2>
+        <p class="text-lg text-gray-300 leading-relaxed">
+          <span class="text-accent-blue font-semibold">主流程保證正確性</span>（透過同時只能被一個port存取的 Bitmap判斷），
+          <span class="text-accent-cyan font-semibold">Self-Audit 保證可觀測性</span>（透過 Log 與 Summarize）。<br>
+          兩者獨立運作，即使主防線失效，稽核機制仍能留下證據供人員判讀。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mechanism 1: Duplicate Detection -->
+  <section class="py-16">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="flex items-center gap-4 mb-12 scroll-reveal">
+        <div class="w-1 h-12 bg-gradient-to-b from-accent-blue to-accent-cyan rounded-full"></div>
+        <div>
+          <span class="text-accent-blue text-sm font-semibold tracking-wider">MECHANISM 01</span>
+          <h2 class="text-3xl font-bold">序號重複檢測機制</h2>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-10 items-start">
+        <!-- Left: Visual -->
+        <div class="space-y-6 scroll-reveal">
+          <div class="glass rounded-2xl p-6">
+            <h4 class="text-lg font-semibold mb-4 text-accent-blue">Bitmap 儲存概念</h4>
+            <div class="space-y-3">
+              <div class="flex items-center gap-3 text-sm">
+                <span class="w-20 text-gray-400 shrink-0">檔案命名</span>
+                <span class="code-pill">SN / 65536</span>
+                <span class="text-gray-500">→ 例如 0.bin、1.bin...</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <span class="w-20 text-gray-400 shrink-0">容量</span>
+                <span>每個 .bin 檔 = <span class="text-white font-semibold">8192 bytes</span> = 65536 bits</span>
+              </div>
+              <div class="flex items-center gap-3 text-sm">
+                <span class="w-20 text-gray-400 shrink-0">對應規則</span>
+                <span>1 個 bit = 1 個序號</span>
+              </div>
+            </div>
+            <div class="mt-5 p-4 rounded-xl bg-deep-800/60 border border-white/5">
+              <div class="flex items-center gap-2 mb-3 text-xs text-gray-500">
+                <span>Byte 0</span>
+                <span class="flex-1 border-b border-dashed border-gray-700"></span>
+                <span>Byte 8191</span>
+              </div>
+              <div class="grid grid-cols-8 gap-1">
+                <div class="h-8 rounded bg-accent-blue/20 border border-accent-blue/30 flex items-center justify-center text-[10px] text-accent-blue">bit0</div>
+                <div class="h-8 rounded bg-accent-blue/20 border border-accent-blue/30 flex items-center justify-center text-[10px] text-accent-blue">bit1</div>
+                <div class="h-8 rounded bg-accent-cyan/40 border border-accent-cyan/60 flex items-center justify-center text-[10px] text-white font-bold">bit2</div>
+                <div class="h-8 rounded bg-accent-blue/20 border border-accent-blue/30 flex items-center justify-center text-[10px] text-accent-blue">bit3</div>
+                <div class="h-8 rounded bg-accent-blue/10 border border-white/10 flex items-center justify-center text-[10px] text-gray-500">...</div>
+                <div class="h-8 rounded bg-accent-blue/10 border border-white/10 flex items-center justify-center text-[10px] text-gray-500">...</div>
+                <div class="h-8 rounded bg-accent-blue/10 border border-white/10 flex items-center justify-center text-[10px] text-gray-500">...</div>
+                <div class="h-8 rounded bg-accent-rose/30 border border-accent-rose/50 flex items-center justify-center text-[10px] text-accent-rose">已用</div>
+              </div>
+              <p class="mt-3 text-xs text-gray-500 text-center">bit = 1 表示該序號已被使用；高亮 bit2 為當前檢查目標</p>
+            </div>
+          </div>
+
+          <div class="glass rounded-2xl p-6">
+            <h4 class="text-lg font-semibold mb-4 text-accent-blue">Critical Section 互斥機制</h4>
+            <p class="text-sm text-gray-400 mb-4 leading-relaxed">
+              為了避免多台機器「同時」讀寫同一個序號範圍，系統設計了<span class="text-white font-semibold">兩道鎖</span>來確保 Critical Section（關鍵程式區段）同時間只會被一個 port 執行。
+            </p>
+            <div class="space-y-3">
+              <div class="flex items-start gap-3 p-3 rounded-lg bg-deep-800/50 border border-white/5">
+                <div class="w-8 h-8 rounded-md bg-accent-blue/20 flex items-center justify-center text-accent-blue text-xs font-bold shrink-0 mt-0.5">1</div>
+                <div>
+                  <h5 class="text-sm font-semibold text-white mb-1">本機內部 Mutex</h5>
+                  <p class="text-xs text-gray-400 leading-relaxed">
+                    同一台電腦上若有多個 port 同時測試，先透過 <span class="code-pill">Mutex</span> 讓這些執行緒排隊。只有拿到鎖的執行緒才能繼續下一步。
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-start gap-3 p-3 rounded-lg bg-deep-800/50 border border-white/5">
+                <div class="w-8 h-8 rounded-md bg-accent-cyan/20 flex items-center justify-center text-accent-cyan text-xs font-bold shrink-0 mt-0.5">2</div>
+                <div>
+                  <h5 class="text-sm font-semibold text-white mb-1">跨機台檔案鎖（LockFile）</h5>
+                  <p class="text-xs text-gray-400 leading-relaxed">
+                    開啟對應的 <span class="code-pill">.bin</span> 後，透過 Windows <span class="code-pill">LockFile</span> 將整個檔案鎖定。其他機器若試圖搶鎖，會進入重試（最長約 5 秒），直到鎖被釋放或逾時失敗。
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="mt-4 p-3 rounded-lg bg-accent-amber/5 border border-accent-amber/20">
+              <p class="text-xs text-accent-amber leading-relaxed">
+                <span class="font-semibold">關鍵原則：</span>「讀取 → 檢查 → 標記 → 寫入磁碟」這整串動作都在鎖定區間內完成，中間不會被其他 port 打斷。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Flow -->
+        <div class="space-y-6 scroll-reveal">
+          <div class="glass rounded-2xl p-6">
+            <h4 class="text-lg font-semibold mb-5 text-accent-blue">測試流程中的兩次檢查</h4>
+            <div class="relative pl-8">
+              <div class="absolute left-3 top-2 bottom-2 w-0.5 timeline-line rounded-full"></div>
+              
+              <div class="relative mb-8">
+                <div class="absolute -left-[21px] w-4 h-4 rounded-full bg-accent-blue border-4 border-deep-900"></div>
+                <div class="glass-card rounded-xl p-4">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="px-2 py-0.5 rounded bg-accent-blue/20 text-accent-blue text-xs font-bold">第一次</span>
+                    <span class="text-sm text-gray-400">初始化後（InitCard 之後）</span>
+                  </div>
+                  <p class="text-sm text-gray-300">
+                    <span class="code-pill">Check=true</span> <span class="code-pill">Record=false</span><br>
+                    先檢查序號是否已被標記。若重複，<span class="text-accent-rose font-semibold">立即拋錯並停止測試</span>。
+                  </p>
+                </div>
+              </div>
+
+              <div class="relative mb-8">
+                <div class="absolute -left-[21px] w-4 h-4 rounded-full bg-gray-600 border-4 border-deep-900"></div>
+                <div class="text-sm text-gray-500 mb-6 pl-1">
+                  中間進行各項 QC 測試（CopyCompare、SpeedClass、MKB...）
+                </div>
+              </div>
+
+              <div class="relative">
+                <div class="absolute -left-[21px] w-4 h-4 rounded-full bg-accent-teal border-4 border-deep-900"></div>
+                <div class="glass-card rounded-xl p-4">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="px-2 py-0.5 rounded bg-accent-teal/20 text-accent-teal text-xs font-bold">第二次</span>
+                    <span class="text-sm text-gray-400">全部測試通過後</span>
+                  </div>
+                  <p class="text-sm text-gray-300">
+                    <span class="code-pill">Check=true</span> <span class="code-pill">Record=true</span><br>
+                    再次確認無重複，並將該序號的 bit <span class="text-accent-teal font-semibold">標記為已使用</span>，立即寫入磁碟。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass rounded-2xl p-6 border-l-4 border-accent-amber">
+            <h4 class="text-lg font-semibold mb-2 text-accent-amber">為什麼需要檢查兩次？</h4>
+            <p class="text-sm text-gray-300 leading-relaxed">
+              第一次防止「已測過的卡片被重測」；第二次確保「測試通過後才正式佔用序號」。
+              若第一次就標記，中途測試失敗會導致該序號被浪費；若只檢查一次，可能讓其他機台在測試過程中搶先標記同一序號。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mechanism 2: Self-Audit -->
+  <section class="py-16 bg-gradient-to-b from-transparent via-deep-800/30 to-transparent">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="flex items-center gap-4 mb-12 scroll-reveal">
+        <div class="w-1 h-12 bg-gradient-to-b from-accent-cyan to-accent-teal rounded-full"></div>
+        <div>
+          <span class="text-accent-cyan text-sm font-semibold tracking-wider">MECHANISM 02</span>
+          <h2 class="text-3xl font-bold">SN Self-Audit 機制</h2>
+        </div>
+      </div>
+
+      <div class="mb-10 scroll-reveal">
+        <div class="glass rounded-2xl p-6 border border-accent-cyan/20">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 rounded-full bg-accent-cyan/20 flex items-center justify-center text-accent-cyan text-lg shrink-0 mt-1">i</div>
+            <div>
+              <p class="text-gray-300 leading-relaxed">
+                Self-Audit <span class="text-accent-rose font-semibold">不會</span>讓測試失敗。它是「監視器回放」的概念——
+                主流程靠鎖檔案來防止序號衝突，Self-Audit 則把「誰在什麼時候進出序號操作」都記錄下來，
+                萬一將來發現有重複序號流出，可以回頭看是哪個環節的互斥機制失效。
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-6 mb-12">
+        <div class="glass-card rounded-2xl p-6 scroll-reveal">
+          <div class="w-12 h-12 rounded-lg bg-accent-cyan/20 flex items-center justify-center text-accent-cyan text-xl mb-4">📝</div>
+          <h4 class="font-bold text-white mb-2">寫入 ENTER / EXIT</h4>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            每台機器在進行序號操作前寫 ENTER，完成後寫 EXIT。兩筆記錄之間會夾住實際的 .bin 鎖檔區間。
+          </p>
+        </div>
+        <div class="glass-card rounded-2xl p-6 scroll-reveal">
+          <div class="w-12 h-12 rounded-lg bg-accent-cyan/20 flex items-center justify-center text-accent-cyan text-xl mb-4">🎫</div>
+          <h4 class="font-bold text-white mb-2">Token 掛牌機制</h4>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            開跑前在共用資料夾掛上「號碼牌」（.tok 檔），讓大家知道這一輪還有多少台機器在線。
+          </p>
+        </div>
+        <div class="glass-card rounded-2xl p-6 scroll-reveal">
+          <div class="w-12 h-12 rounded-lg bg-accent-cyan/20 flex items-center justify-center text-accent-cyan text-xl mb-4">🔍</div>
+          <h4 class="font-bold text-white mb-2">最後一台自動分析</h4>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            當最後一台機器收工撤牌時，自動分析整份 log，產出統計摘要並備份原始檔案。
+          </p>
+        </div>
+      </div>
+
+      <!-- Audit Log Visualization -->
+      <div class="glass rounded-2xl p-6 md:p-8 scroll-reveal">
+        <h4 class="text-lg font-semibold mb-6 text-accent-cyan">Log 分析示意圖</h4>
+        <div class="space-y-4">
+          <!-- Normal case -->
+          <div class="p-4 rounded-xl bg-deep-800/50 border border-white/5">
+            <div class="text-xs text-gray-500 mb-3">正常情況（同一序號依序進出）</div>
+            <div class="flex flex-wrap items-center gap-2 text-xs md:text-sm">
+              <span class="code-pill">Station-A</span>
+              <span class="px-2 py-1 rounded bg-accent-blue/20 text-accent-blue">ENTER SN=1234</span>
+              <span class="text-gray-600">→ 操作 .bin →</span>
+              <span class="px-2 py-1 rounded bg-accent-teal/20 text-accent-teal">EXIT res=0</span>
+              <span class="text-gray-600 mx-2">|</span>
+              <span class="code-pill">Station-B</span>
+              <span class="px-2 py-1 rounded bg-accent-blue/20 text-accent-blue">ENTER SN=1234</span>
+              <span class="text-gray-600">→ 操作 .bin →</span>
+              <span class="px-2 py-1 rounded bg-accent-teal/20 text-accent-teal">EXIT res=0</span>
+            </div>
+          </div>
+          <!-- Abnormal case -->
+          <div class="p-4 rounded-xl bg-accent-rose/5 border border-accent-rose/20">
+            <div class="text-xs text-accent-rose mb-3">異常情況（Self-Audit 會抓到）</div>
+            <div class="flex flex-wrap items-center gap-2 text-xs md:text-sm">
+              <span class="code-pill">Station-A</span>
+              <span class="px-2 py-1 rounded bg-accent-blue/20 text-accent-blue">ENTER SN=1234</span>
+              <span class="text-gray-600">→ 還沒 EXIT →</span>
+              <span class="code-pill">Station-B</span>
+              <span class="px-2 py-1 rounded bg-accent-rose/20 text-accent-rose border border-accent-rose/30">ENTER SN=1234 ⚠️</span>
+            </div>
+            <p class="mt-2 text-xs text-accent-rose">
+              Station-B 在 Station-A 尚未 EXIT 前就 ENTER → 被記為「Suspicious overlap」，表示互斥機制可能失效。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QA Focus -->
+  <section class="py-16 bg-gradient-to-b from-transparent via-deep-800/30 to-transparent">
+    <div class="max-w-4xl mx-auto px-6">
+      <h2 class="text-3xl font-bold mb-10 text-center scroll-reveal">關注重點</h2>
+      <div class="space-y-6">
+        <div class="glass-card rounded-2xl p-6 flex gap-4 scroll-reveal">
+          <div class="w-10 h-10 rounded-full bg-accent-amber/20 flex items-center justify-center text-accent-amber font-bold shrink-0">Q1</div>
+          <div>
+            <h4 class="font-bold text-white mb-1">如果 Self-Audit 發現異常，測試會不會被擋下？</h4>
+            <p class="text-sm text-gray-400 leading-relaxed">
+              <span class="text-white">不會。</span>Self-Audit 的分析結果只會寫入 history log 與測試程式的內部記錄，不會改變該卡片的測試結果。
+              它的目的是「事後追查」，不是「即時攔截」。主流程的即時攔截由 .bin + LockFile 負責。
+            </p>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 flex gap-4 scroll-reveal">
+          <div class="w-10 h-10 rounded-full bg-accent-amber/20 flex items-center justify-center text-accent-amber font-bold shrink-0">Q2</div>
+          <div>
+            <h4 class="font-bold text-white mb-1">為什麼要額外設計 Self-Audit 機制</h4>
+            <p class="text-sm text-gray-400 leading-relaxed">
+              主流程（.bin + LockFile）是「防線」；Self-Audit 是「監視器」。<br>
+              任何檔案鎖機制都可能因網路延遲、作業系統排程或共用資料夾異常而失效。
+              Self-Audit 獨立運作，即使主防線意外失效，也能留下證據供工程師還原現場。
+            </p>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl p-6 flex gap-4 scroll-reveal">
+          <div class="w-10 h-10 rounded-full bg-accent-amber/20 flex items-center justify-center text-accent-amber font-bold shrink-0">Q3</div>
+          <div>
+            <h4 class="font-bold text-white mb-1">如何人工查看 Self-Audit 結果？</h4>
+            <p class="text-sm text-gray-400 leading-relaxed">
+              在每個 Lot 的資料夾下：<br>
+              <span class="code-pill">SN_record_audit_history.log</span>：每輪的統計摘要（持續累積）<br>
+              <span class="code-pill">backup\SN_record_audit_*.log</span>：原始稽核 log 的備份（含時間戳與機台碼）
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12 border-t border-white/5">
+    <div class="max-w-6xl mx-auto px-6 text-center">
+      <p class="text-gray-500 text-sm">
+        SN Duplication Check與Self-Audit說明文件<br>
+        <span class="text-gray-600">基於 SourceCode/QCTool/CardTest/SerialNumberChecker.cpp 與 SnRecordAudit.cpp 原始碼分析製作</span>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Scroll reveal animation
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.scroll-reveal').forEach(el => observer.observe(el));
+  </script>
+</body>
+</html>
