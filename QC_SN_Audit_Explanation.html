@@ -113,7 +113,7 @@
         <span class="bg-gradient-to-r from-accent-blue via-accent-cyan to-accent-teal bg-clip-text text-transparent">與自我驗證機制</span>
       </h1>
       <p class="text-lg md:text-xl text-gray-400 max-w-2xl leading-relaxed animate-fade-in-up">
-        跨部門說明文件。了解 QCTool 如何確保每張卡片序號唯一性，
+        面向 PM / QA 的跨部門說明文件。了解 QCTool 如何確保每張卡片序號唯一性，
         以及當「主防線」萬一失效時，系統如何留下證據供事後追查。
       </p>
     </div>
@@ -213,9 +213,9 @@
                 <div class="h-8 rounded bg-accent-cyan/40 border border-accent-cyan/60 flex items-center justify-center text-[10px] text-white font-bold">bit2</div>
                 <div class="h-8 rounded bg-accent-blue/20 border border-accent-blue/30 flex items-center justify-center text-[10px] text-accent-blue">bit3</div>
                 <div class="h-8 rounded bg-accent-blue/10 border border-white/10 flex items-center justify-center text-[10px] text-gray-500">...</div>
-                <div class="h-8 rounded bg-accent-blue/10 border border-white/10 flex items-center justify-center text-[10px] text-gray-500">...</div>
-                <div class="h-8 rounded bg-accent-blue/10 border border-white/10 flex items-center justify-center text-[10px] text-gray-500">...</div>
                 <div class="h-8 rounded bg-accent-rose/30 border border-accent-rose/50 flex items-center justify-center text-[10px] text-accent-rose">已用</div>
+                <div class="h-8 rounded bg-accent-blue/10 border border-white/10 flex items-center justify-center text-[10px] text-gray-500">...</div>
+                <div class="h-8 rounded bg-accent-blue/10 border border-white/10 flex items-center justify-center text-[10px] text-gray-500">...</div>
               </div>
               <p class="mt-3 text-xs text-gray-500 text-center">bit = 1 表示該序號已被使用；高亮 bit2 為當前檢查目標</p>
             </div>
@@ -348,12 +348,12 @@
           <div class="w-12 h-12 rounded-lg bg-accent-cyan/20 flex items-center justify-center text-accent-cyan text-xl mb-4">🎫</div>
           <h4 class="font-bold text-white mb-2">Token 掛牌機制</h4>
           <p class="text-sm text-gray-400 leading-relaxed">
-            開跑前在共用資料夾掛上「號碼牌」（.tok 檔），讓大家知道這一輪還有多少台機器在線。
+            開跑前在共用資料夾掛上「號碼牌」（.tok 檔），讓大家知道這一輪還有多少台機器在線。這是為了確認其他機器是否離場，自己是不是最後一台。
           </p>
         </div>
         <div class="glass-card rounded-2xl p-6 scroll-reveal">
           <div class="w-12 h-12 rounded-lg bg-accent-cyan/20 flex items-center justify-center text-accent-cyan text-xl mb-4">🔍</div>
-          <h4 class="font-bold text-white mb-2">最後一台自動分析</h4>
+          <h4 class="font-bold text-white mb-2">最後一台負責分析</h4>
           <p class="text-sm text-gray-400 leading-relaxed">
             當最後一台機器收工撤牌時，自動分析整份 log，產出統計摘要並備份原始檔案。
           </p>
